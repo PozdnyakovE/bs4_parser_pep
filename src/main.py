@@ -13,7 +13,7 @@ from outputs import control_output
 from utils import find_tag, get_response
 
 
-def pep(session):
+def pep(session):  # noqa: C901
     response = get_response(session, PEP_URL)
     if response is None:
         return
