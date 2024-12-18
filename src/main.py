@@ -25,43 +25,39 @@ def pep(session):
     total_count = 0
     counter = {}
     for table in tables:
-        tr_tags = table.find_all('tr')
+        tbody_tag = find_tag(table, 'tbody')
+        tr_tags = tbody_tag.find_all('tr')
         for tr_tag in tr_tags:
-            if tr_tag.td:
-                pep_link = urljoin(
-                    PEP_URL,
-                    find_tag(tr_tag,
-                             'a',
-                             attrs={'class': 'pep reference internal'})['href']
+            status_tag = find_tag(tr_tag, 'td')
+            pep_link = urljoin(PEP_URL, status_tag.find_next('td').a['href'])
+            total_count += 1
+            pep_response = get_response(session, pep_link)
+            if pep_response is None:
+                continue
+            pep_soup = BeautifulSoup(pep_response.text, features='lxml')
+            article = find_tag(
+                pep_soup,
+                'dl',
+                attrs={'class': 'rfc2822 field-list simple'}
+            )
+            dt_tags = article.find_all('dt')
+            for dt_tag in dt_tags:
+                if re.search(r'Status:', dt_tag.text) is not None:
+                    status_from_page = dt_tag.find_next('dd').abbr.text
+                    if status_from_page not in counter:
+                        counter[status_from_page] = 0
+                    counter[status_from_page] += 1
+            try:
+                status = find_tag(status_tag, 'abbr').text[1:]
+            except ParserFindTagException:
+                status = ''
+            expected_status = EXPECTED_STATUS[status]
+            if status_from_page not in expected_status:
+                logging.info(f'Несовпадающий статус: {pep_link}')
+                logging.info(
+                    f'Ожидаемый статус: {expected_status}. '
+                    f'Фактический: {status_from_page}'
                 )
-                total_count += 1
-                response = get_response(session, pep_link)
-                if response is None:
-                    continue
-                soup = BeautifulSoup(response.text, features='lxml')
-                article = find_tag(
-                    soup,
-                    'dl',
-                    attrs={'class': 'rfc2822 field-list simple'}
-                )
-                dt_tags = article.find_all('dt')
-                for dt_tag in dt_tags:
-                    if re.search(r'Status:', dt_tag.text) is not None:
-                        status_from_page = dt_tag.find_next('dd').abbr.text
-                        if status_from_page not in counter:
-                            counter[status_from_page] = 0
-                        counter[status_from_page] += 1
-                try:
-                    status = find_tag(tr_tag, 'abbr').text[1:]
-                except ParserFindTagException:
-                    status = ''
-                expected_status = EXPECTED_STATUS[status]
-                if status_from_page not in expected_status:
-                    logging.info(f'Несовпадающий статус: {pep_link}')
-                    logging.info(
-                        f'Ожидаемый статус: {expected_status}. '
-                        f'Фактический: {status_from_page}'
-                    )
     counter['Total'] = total_count
     results = [('Статус', 'Количество')]
     for key in counter:
