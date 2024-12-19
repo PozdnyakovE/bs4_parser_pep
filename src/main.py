@@ -12,8 +12,29 @@ from exceptions import ParserFindTagException
 from outputs import control_output
 from utils import find_tag, get_response
 
+counter = {}  # Общий словарь-счетчик
 
-# flake8: noqa: C901
+
+def single_pep_parser(session, pep_link):
+    pep_response = get_response(session, pep_link)
+    if pep_response is None:
+        return
+    pep_soup = BeautifulSoup(pep_response.text, features='lxml')
+    article = find_tag(
+        pep_soup,
+        'dl',
+        attrs={'class': 'rfc2822 field-list simple'}
+    )
+    dt_tags = article.find_all('dt')
+    for dt_tag in dt_tags:
+        if re.search(r'Status:', dt_tag.text) is not None:
+            status_from_page = dt_tag.find_next('dd').abbr.text
+            if status_from_page not in counter:
+                counter[status_from_page] = 0
+            counter[status_from_page] += 1
+    return status_from_page
+
+
 def pep(session):
     response = get_response(session, PEP_URL)
     if response is None:
@@ -24,7 +45,6 @@ def pep(session):
         attrs={'class': 'pep-zero-table docutils align-default'}
     )
     total_count = 0
-    counter = {}
     for table in tables:
         tbody_tag = find_tag(table, 'tbody')
         tr_tags = tbody_tag.find_all('tr')
@@ -32,22 +52,7 @@ def pep(session):
             status_tag = find_tag(tr_tag, 'td')
             pep_link = urljoin(PEP_URL, status_tag.find_next('td').a['href'])
             total_count += 1
-            pep_response = get_response(session, pep_link)
-            if pep_response is None:
-                continue
-            pep_soup = BeautifulSoup(pep_response.text, features='lxml')
-            article = find_tag(
-                pep_soup,
-                'dl',
-                attrs={'class': 'rfc2822 field-list simple'}
-            )
-            dt_tags = article.find_all('dt')
-            for dt_tag in dt_tags:
-                if re.search(r'Status:', dt_tag.text) is not None:
-                    status_from_page = dt_tag.find_next('dd').abbr.text
-                    if status_from_page not in counter:
-                        counter[status_from_page] = 0
-                    counter[status_from_page] += 1
+            status_from_page = single_pep_parser(session, pep_link)
             try:
                 status = find_tag(status_tag, 'abbr').text[1:]
             except ParserFindTagException:
