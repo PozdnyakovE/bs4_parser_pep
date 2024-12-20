@@ -13,13 +13,18 @@ from outputs import control_output
 from utils import find_tag, get_response
 
 counter = {}  # Общий словарь-счетчик
+log_list = ['Parser logs:']
+
+
+def get_soup(session, link):
+    response = get_response(session, link)
+    if response is None:
+        return
+    return BeautifulSoup(response.text, features='lxml')
 
 
 def single_pep_parser(session, pep_link):
-    pep_response = get_response(session, pep_link)
-    if pep_response is None:
-        return
-    pep_soup = BeautifulSoup(pep_response.text, features='lxml')
+    pep_soup = get_soup(session, pep_link)
     article = find_tag(
         pep_soup,
         'dl',
@@ -36,16 +41,13 @@ def single_pep_parser(session, pep_link):
 
 
 def pep(session):
-    response = get_response(session, PEP_URL)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = get_soup(session, PEP_URL)
     tables = soup.find_all(
         'table',
         attrs={'class': 'pep-zero-table docutils align-default'}
     )
     total_count = 0
-    for table in tables:
+    for table in tqdm(tables):
         tbody_tag = find_tag(table, 'tbody')
         tr_tags = tbody_tag.find_all('tr')
         for tr_tag in tr_tags:
@@ -57,13 +59,22 @@ def pep(session):
                 status = find_tag(status_tag, 'abbr').text[1:]
             except ParserFindTagException:
                 status = ''
-            expected_status = EXPECTED_STATUS[status]
-            if status_from_page not in expected_status:
-                logging.info(f'Несовпадающий статус: {pep_link}')
-                logging.info(
-                    f'Ожидаемый статус: {expected_status}. '
-                    f'Фактический: {status_from_page}'
+            try:
+                expected_status = EXPECTED_STATUS[status]
+            except KeyError:
+                expected_status = 'Неизвестный статус'
+                log_list.append(
+                        f'Не найдено совпадение '
+                        f'для статуса: {status}.'
                 )
+            if status_from_page not in expected_status:
+                log_list.append(f'Несовпадающий статус: {pep_link}')
+                log_list.append(
+                        f'Ожидаемый статус: {expected_status}. '
+                        f'Фактический: {status_from_page}'
+                )
+    for log in log_list:
+        logging.info(log)
     counter['Total'] = total_count
     results = [('Статус', 'Количество')]
     for key in counter:
@@ -100,7 +111,7 @@ def whats_new(session):
         results.append(
             (version_link, h1.text, dl_text)
         )
-        return results
+    return results
 
 
 def latest_versions(session):
@@ -114,8 +125,8 @@ def latest_versions(session):
         if 'All versions' in ul.text:
             a_tags = ul.find_all('a')
             break
-    else:
-        raise Exception('Ничего не нашлось')
+        else:
+            raise ParserFindTagException('Ничего не нашлось')
     results = [['Ссылка на документацию', 'Версия', 'Статус']]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for a_tag in a_tags:

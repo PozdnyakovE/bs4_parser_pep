@@ -2,10 +2,8 @@ import argparse
 import logging
 from logging.handlers import RotatingFileHandler
 
-from constants import BASE_DIR
-
-LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
-DT_FORMAT = '%d.%m.%Y %H:%M:%S'
+from constants import (BACKUP_COUNT, BASE_DIR, DT_FORMAT,
+                       LOG_FORMAT, MAX_BYTES, UTF_8_ENCODING)
 
 
 def configure_logging():
@@ -13,7 +11,10 @@ def configure_logging():
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / 'parser.log'
     rotating_handler = RotatingFileHandler(
-        log_file, maxBytes=10 ** 6, backupCount=5, encoding='utf-8'
+        log_file,
+        maxBytes=MAX_BYTES,
+        backupCount=BACKUP_COUNT,
+        encoding=UTF_8_ENCODING
     )
     logging.basicConfig(
         datefmt=DT_FORMAT,
