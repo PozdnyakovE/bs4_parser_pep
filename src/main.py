@@ -2,25 +2,17 @@ import logging
 import re
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
 import requests_cache
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
 from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_URL
-from exceptions import ParserFindTagException
+from exceptions import ParserFindTagException, ParserNoMatchingInfoException
 from outputs import control_output
-from utils import find_tag, get_response
+from utils import find_tag, get_soup
 
 counter = {}  # Общий словарь-счетчик
 log_list = ['Parser logs:']
-
-
-def get_soup(session, link):
-    response = get_response(session, link)
-    if response is None:
-        return
-    return BeautifulSoup(response.text, features='lxml')
 
 
 def single_pep_parser(session, pep_link):
@@ -86,10 +78,7 @@ def pep(session):
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    response = get_response(session, whats_new_url)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = get_soup(session, whats_new_url)
     main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
     div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
     sections_by_python = div_with_ul.find_all(
@@ -101,10 +90,7 @@ def whats_new(session):
         version_a_tag = find_tag(section, 'a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
-        response = get_response(session, version_link)
-        if response is None:
-            continue
-        soup = BeautifulSoup(response.text, features='lxml')
+        soup = get_soup(session, version_link)
         h1 = soup.find('h1')
         dl = soup.find('dl')
         dl_text = dl.text.replace('\n', ' ')
@@ -115,10 +101,7 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    response = get_response(session, MAIN_DOC_URL)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = get_soup(session, MAIN_DOC_URL)
     sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
@@ -126,7 +109,10 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
         else:
-            raise ParserFindTagException('Ничего не нашлось')
+            raise ParserNoMatchingInfoException(
+                'Запрашиваемый текст "All versions" в теге не найден.',
+                {'Tag': ul}
+            )
     results = [['Ссылка на документацию', 'Версия', 'Статус']]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for a_tag in a_tags:
@@ -144,10 +130,7 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    response = get_response(session, downloads_url)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = get_soup(session, downloads_url)
     main_tag = find_tag(soup, 'div', {'role': 'main'})
     table_tag = find_tag(main_tag, 'table', {'class': 'docutils'})
     pdf_a4_tag = find_tag(
